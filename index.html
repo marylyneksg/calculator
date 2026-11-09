@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>APMS Quote Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: working form on the left (quote settings, items, shipping extras), sticky quote summary on the right; stacks on phones. */
+:root{
+  --bg:#F3F6F7; --surface:#FFFFFF; --sunk:#EAF0F2; --ink:#13212A; --muted:#5A6B75; --line:#D8E1E5;
+  --accent:#0D6670; --accent-ink:#FFFFFF; --accent-soft:#DDEFF0; --warn:#9A5B00; --warn-soft:#FBF0DC;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0D1418; --surface:#141F25; --sunk:#101A1F; --ink:#E3ECEF; --muted:#8FA2AC; --line:#24343C;
+  --accent:#55B8C1; --accent-ink:#06191C; --accent-soft:#163238; --warn:#E3A84B; --warn-soft:#2E2414; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0D1418; --surface:#141F25; --sunk:#101A1F; --ink:#E3ECEF; --muted:#8FA2AC; --line:#24343C;
+  --accent:#55B8C1; --accent-ink:#06191C; --accent-soft:#163238; --warn:#E3A84B; --warn-soft:#2E2414; color-scheme:dark}
+
+*{box-sizing:border-box}
+html{color-scheme:light}
+body{margin:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.45}
+.wrap{max-width:1240px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:18px}
+h1{font-size:22px;font-weight:700;letter-spacing:-.01em;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:2px 0 0;font-size:13px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:start}
+@media (max-width:980px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px}
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+h2{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+input,select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-width:0}
+input[type=number]{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button{font:inherit;cursor:pointer}
+
+/* segmented controls */
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--sunk)}
+.seg button{flex:1;border:0;background:transparent;color:var(--ink);padding:8px 6px;font-weight:500;font-size:13px;white-space:nowrap}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.inline{display:flex;gap:8px;align-items:center}
+.inline input{max-width:110px}
+.hint{font-size:12px;color:var(--muted)}
+
+/* items */
+.items{display:flex;flex-direction:column;gap:10px}
+.item{display:grid;grid-template-columns:minmax(140px,2.2fr) .7fr 1.1fr .8fr .8fr .8fr .9fr .9fr 32px;gap:8px;align-items:end;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--sunk)}
+.item .calc{font-family:var(--mono);font-size:13px;padding:7px 0;font-variant-numeric:tabular-nums;white-space:nowrap}
+.item .del{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:6px;height:34px;width:32px;font-size:16px;line-height:1}
+.item .del:hover{color:var(--ink)}
+@media (max-width:760px){
+  .item{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .item .desc{grid-column:1/-1}
+  .item .del{grid-column:3;justify-self:end;width:auto;padding:0 12px;font-size:13px}
+  .item .del::after{content:" Remove"}
+}
+.row-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:7px;padding:8px 12px;font-weight:500}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn:hover{border-color:var(--accent)}
+.totals-strip{display:flex;flex-wrap:wrap;gap:6px 18px;margin-left:auto;font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.totals-strip b{color:var(--ink);font-weight:500}
+
+/* extras + rates */
+.extras{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.check{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ink);padding:7px 0}
+.check input{width:auto}
+details.rates>summary{cursor:pointer;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);list-style:none;display:flex;justify-content:space-between;align-items:center;gap:8px}
+details.rates>summary::-webkit-details-marker{display:none}
+details.rates>summary::after{content:"Show";font-size:12px;text-transform:none;letter-spacing:0;color:var(--accent);font-weight:500}
+details.rates[open]>summary::after{content:"Hide"}
+.rates-body{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.rates-body h3{font-size:13px;margin:0 0 8px;font-weight:600}
+.rate-list{display:grid;grid-template-columns:minmax(0,1fr) 96px;gap:6px 10px;align-items:center;font-size:12.5px}
+.rate-list span{color:var(--muted)}
+.rate-list input{padding:5px 7px;text-align:right}
+
+/* summary */
+.summary{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px)}
+@media (max-width:980px){.summary{position:static}}
+.compare{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:14px}
+.compare button{border:1px solid var(--line);background:var(--sunk);color:var(--ink);border-radius:8px;padding:8px;text-align:left;display:flex;flex-direction:column;gap:2px;min-width:0}
+.compare button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.compare .k{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.compare .v{font-family:var(--mono);font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grand{border-top:1px solid var(--line);padding-top:12px;margin-top:4px}
+.grand .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.grand .amt{font-family:var(--mono);font-size:28px;font-weight:500;letter-spacing:-.02em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.split .amt{font-size:20px}
+.note{font-size:12px;padding:8px 10px;border-radius:7px;background:var(--warn-soft);color:var(--warn);margin-top:10px}
+table.bd{width:100%;border-collapse:collapse;font-size:12.5px}
+table.bd td{padding:4px 0;vertical-align:top}
+table.bd td.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;padding-left:10px}
+table.bd td .d{display:block;color:var(--muted);font-size:11.5px}
+table.bd tr.sum td{border-top:1px solid var(--line);font-weight:600;padding-top:6px}
+table.bd tr.step td{color:var(--muted)}
+table.bd tr.key td{font-weight:600;color:var(--accent)}
+.sec{margin-top:14px}
+.sec h4{font-size:12px;font-weight:600;margin:0 0 6px;display:flex;justify-content:space-between}
+.copybox{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+textarea#copyText{width:100%;min-height:150px;font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:8px}
+.toast{font-size:12px;color:var(--accent);align-self:center}
+@media (prefers-reduced-motion:no-preference){.compare button,.seg button,.btn{transition:background .15s,border-color .15s}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>APMS Quote Calculator</h1>
+      <p class="sub">Kivu Safari Group · goods from APMS Europe, groupage Brussels → Kinshasa via Herfurth Logistics</p>
+    </div>
+    <button class="btn" id="newQuote" type="button">New quote</button>
+  </header>
+
+  <div class="grid">
+    <div class="stack">
+      <section class="panel" aria-labelledby="h-settings">
+        <h2 id="h-settings">Quote settings</h2>
+        <div class="settings">
+          <label class="f"><span>Client / reference</span><input id="ref" type="text" placeholder="e.g. Hotel Memling – cold room"></label>
+          <div class="f"><label class="f" style="gap:4px"><span>Quoting as</span></label>
+            <div class="seg" id="segSource" role="group" aria-label="Quoting as">
+              <button type="button" data-v="apms">Direct APMS</button>
+              <button type="button" data-v="afrig">Afrigeration</button>
+            </div></div>
+          <div class="f"><span class="hint">Quote currency (goods)</span>
+            <div class="seg" id="segCur" role="group" aria-label="Quote currency">
+              <button type="button" data-v="EUR">EUR €</button>
+              <button type="button" data-v="USD">USD $</button>
+            </div></div>
+          <div class="f"><span class="hint">Shipping</span>
+            <div class="seg" id="segMode" role="group" aria-label="Shipping mode">
+              <button type="button" data-v="air">Air</button>
+              <button type="button" data-v="sea">Sea</button>
+              <button type="button" data-v="none">None</button>
+            </div></div>
+          <label class="f"><span>EUR → USD rate</span><input id="fx" type="number" step="0.01" min="0"></label>
+          <label class="f"><span>APMS margin (×)</span><input id="apmsMult" type="number" step="0.01" min="0"></label>
+          <label class="f"><span>Afrigeration margin (×)</span><input id="afrigMult" type="number" step="0.01" min="0"></label>
+          <div class="f"><label class="f" for="safety"><span>Shipping safety margin (5–10%)</span></label>
+            <div class="inline">
+              <input id="safety" type="number" step="0.5" min="5" max="10">
+              <div class="seg" id="segSafety" role="group" aria-label="Safety margin presets" style="flex:1">
+                <button type="button" data-v="5">5%</button>
+                <button type="button" data-v="10">10%</button>
+              </div>
+            </div></div>
+          <div class="f"><span class="hint">Shipping shown in</span>
+            <div class="seg" id="segShipCur" role="group" aria-label="Shipping currency">
+              <button type="button" data-v="USD">Always USD</button>
+              <button type="button" data-v="follow">Quote currency</button>
+            </div></div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="h-items">
+        <h2 id="h-items">Items</h2>
+        <div class="items" id="items"></div>
+        <div class="row-actions">
+          <button class="btn primary" id="addItem" type="button">+ Add item</button>
+          <div class="totals-strip" id="strip"></div>
+        </div>
+        <p class="hint" style="margin:10px 0 0">Price and weight are per piece. Volume = pieces × L × W × H ÷ 1,000,000 (same formula as the poids/volume sheet).</p>
+      </section>
+
+      <section class="panel" id="extrasPanel" aria-labelledby="h-extras">
+        <h2 id="h-extras">Shipping options</h2>
+        <div class="extras" id="extras"></div>
+      </section>
+
+      <section class="panel">
+        <details class="rates" id="ratesDetails">
+          <summary>Herfurth rate card</summary>
+          <p class="hint" style="margin:10px 0 0">Edit when Herfurth sends new rates. Changes are kept in this browser. Air card valid to 24/04/2026; sea card dated December 2022, so confirm both per shipment.</p>
+          <div class="rates-body" id="ratesBody"></div>
+          <div class="row-actions"><button class="btn" id="resetRates" type="button">Reset to rate card values</button></div>
+        </details>
+      </section>
+    </div>
+
+    <aside class="panel summary" aria-labelledby="h-sum">
+      <h2 id="h-sum">Quote</h2>
+      <div class="compare" id="compare"></div>
+      <div id="grand"></div>
+      <div class="sec" id="goodsSec"></div>
+      <div class="sec" id="shipSec"></div>
+      <div class="copybox">
+        <button class="btn primary" id="copyBtn" type="button">Copy quote summary</button>
+        <span class="toast" id="toast" aria-live="polite"></span>
+        <textarea id="copyText" readonly hidden aria-label="Quote summary text"></textarea>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function(){
+const KEY='apms-quote-calc-v1';
+const AIR_RATES=[
+  ['volFactor','Volumetric factor (kg per m³)',166.67],
+  ['doc1','Customs document, 1st (€)',30],
+  ['hs','Extra HS code (€ / line)',8],
+  ['exa','Extra EXA document (€)',20],
+  ['transit','Transit document (€)',85],
+  ['reception','Reception charges (€ / delivery)',6],
+  ['feri','FERI (€ / kg)',0.25],
+  ['feriMin','FERI minimum (€)',30],
+  ['rate','Airfreight (€ / kg actual)',11.95],
+  ['smallMax','Small shipment up to (kg)',8],
+  ['small','Small shipment rate (€ / kg)',15],
+  ['volSur','Volume surcharge (€ / kg over actual)',4.5],
+  ['fuel','Fuel surcharge (€ / kg)',0.85],
+  ['energy','Energy surcharge (€ / kg)',1.2],
+  ['dgrPax','DGR PAX (€ / kg)',0.25],
+  ['dgrCao','DGR CAO (€ / kg)',1.0],
+  ['un','Additional UN code (€)',10],
+  ['dgrAirline','DGR airline check (€)',97],
+  ['lithium','Lithium check (€)',85],
+  ['dgrCheck','DGR check by DG company (€)',95],
+  ['keepCool','Keep Cool 2–8 °C (€ / shipment)',76],
+];
+const SEA_RATES=[
+  ['wm','W/M: kg per m³',1000],
+  ['bl','B/L issue (€)',30],
+  ['doc1','Export customs doc, 1st (€)',45],
+  ['docX','Extra customs document (€)',25],
+  ['reception','Warehouse reception (€)',5],
+  ['admin','Admin / handling (€ per shipment)',70],
+  ['dgDoc','Dangerous goods control (€)',125],
+  ['tonne','Weight rate (€ / tonne)',850],
+  ['tonneMin','Weight minimum (€)',600],
+  ['m3a','Volume up to 5 m³ (€ / m³)',750],
+  ['m3b','Volume over 5 m³ (€ / m³)',700],
+  ['m3c','Volume over 10 m³ (€ / m³)',650],
+  ['volMin','Volume minimum (€)',400],
+  ['dgSur','Dangerous goods surcharge (€)',475],
+  ['insPct','Insurance (% ad valorem)',1],
+  ['insCover','Insured value (% of CIF)',110],
+  ['insTax','Tax on premium (%)',2.4],
+  ['insFee','Insurance admin fee (€)',15],
+];
+const def=(arr)=>Object.fromEntries(arr.map(r=>[r[0],r[2]]));
+const EXAMPLE_ITEMS=[
+  {desc:'Example: stainless worktop panels',qty:4,price:850,l:360,w:80,h:1.6,kg:80},
+  {desc:'Example: condensing unit',qty:1,price:1240,l:50,w:50,h:25,kg:10},
+];
+const DEFAULT={
+  ref:'',source:'apms',cur:'EUR',mode:'air',fx:1.2,apmsMult:1.25,afrigMult:1.2,safety:5,shipCur:'USD',
+  items:EXAMPLE_ITEMS,
+  airX:{hs:0,exa:0,transit:0,reception:1,dgrPax:false,dgrCao:false,un:0,dgrAirline:0,lithium:0,dgrCheck:0,keepCool:0},
+  seaX:{docX:0,reception:1,dg:false,insure:false},
+  airR:def(AIR_RATES),seaR:def(SEA_RATES)
+};
+const clone=o=>JSON.parse(JSON.stringify(o));
+let S=clone(DEFAULT);
+try{const raw=localStorage.getItem(KEY);if(raw){const p=JSON.parse(raw);S=Object.assign(clone(DEFAULT),p);
+  S.airR=Object.assign(def(AIR_RATES),p.airR||{});S.seaR=Object.assign(def(SEA_RATES),p.seaR||{});
+  S.airX=Object.assign(clone(DEFAULT.airX),p.airX||{});S.seaX=Object.assign(clone(DEFAULT.seaX),p.seaX||{});
+  if(!Array.isArray(S.items))S.items=clone(EXAMPLE_ITEMS);}}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+
+const $=id=>document.getElementById(id);
+const n=v=>{const x=parseFloat(v);return isFinite(x)?x:0};
+const fmt=(v,d=2)=>Number(v||0).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const money=(v,c)=>(c==='USD'?'$':'€')+' '+fmt(v);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- settings ---------- */
+function bindSeg(id,key,cb){
+  const el=$(id);
+  el.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+    S[key]=key==='safety'?n(b.dataset.v):b.dataset.v; if(cb)cb(); syncSettings(); update();});
+}
+function syncSeg(id,val){[...$(id).querySelectorAll('button')].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v==String(val))))}
+function syncSettings(){
+  syncSeg('segSource',S.source);syncSeg('segCur',S.cur);syncSeg('segMode',S.mode);syncSeg('segShipCur',S.shipCur);syncSeg('segSafety',S.safety);
+  if(document.activeElement!==$('fx'))$('fx').value=S.fx;
+  if(document.activeElement!==$('apmsMult'))$('apmsMult').value=S.apmsMult;
+  if(document.activeElement!==$('afrigMult'))$('afrigMult').value=S.afrigMult;
+  if(document.activeElement!==$('safety'))$('safety').value=S.safety;
+  if(document.activeElement!==$('ref'))$('ref').value=S.ref;
+  $('afrigMult').closest('label').style.opacity=S.source==='afrig'?1:.55;
+  renderExtras();
+}
+bindSeg('segSource','source');bindSeg('segCur','cur');bindSeg('segMode','mode');bindSeg('segShipCur','shipCur');bindSeg('segSafety','safety');
+['fx','apmsMult','afrigMult'].forEach(k=>$(k).addEventListener('input',e=>{S[k]=n(e.target.value);update()}));
+$('safety').addEventListener('input',e=>{S.safety=n(e.target.value);syncSeg('segSafety',S.safety);update()});
+$('safety').addEventListener('change',e=>{S.safety=Math.min(10,Math.max(5,n(e.target.value)));e.target.value=S.safety;syncSeg('segSafety',S.safety);update()});
+$('ref').addEventListener('input',e=>{S.ref=e.target.value;update()});
+
+/* ---------- items ---------- */
+const FIELDS=[['desc','Description','text'],['qty','Pieces','number'],['price','Price / pc (€)','number'],['l','L (cm)','number'],['w','W (cm)','number'],['h','H (cm)','number'],['kg','kg / pc','number']];
+let uid=0;
+function renderItems(){
+  const box=$('items');box.innerHTML='';
+  S.items.forEach((it,i)=>{
+    const row=document.createElement('div');row.className='item';
+    FIELDS.forEach(([k,lab,t])=>{
+      const id='it'+i+'_'+k;
+      const l=document.createElement('label');l.className='f'+(k==='desc'?' desc':'');
+      l.innerHTML='<span>'+lab+'</span>';
+      const inp=document.createElement('input');inp.type=t;inp.id=id;inp.value=it[k]??'';
+      if(t==='number'){inp.step='any';inp.min='0';inp.inputMode='decimal'}
+      inp.addEventListener('input',()=>{it[k]=t==='number'?inp.value:inp.value;update()});
+      l.appendChild(inp);row.appendChild(l);
+    });
+    const c=document.createElement('div');c.className='f';c.innerHTML='<span>m³</span><div class="calc" id="cbm'+i+'">0.000</div>';row.appendChild(c);
+    const d=document.createElement('button');d.type='button';d.className='del';d.setAttribute('aria-label','Remove item '+(i+1));d.textContent='×';
+    d.addEventListener('click',()=>{S.items.splice(i,1);if(!S.items.length)S.items.push(blank());renderItems();update()});
+    row.appendChild(d);box.appendChild(row);
+  });
+}
+const blank=()=>({desc:'',qty:1,price:'',l:'',w:'',h:'',kg:''});
+$('addItem').addEventListener('click',()=>{S.items.push(blank());renderItems();update();
+  const last=S.items.length-1;const el=$('it'+last+'_desc');if(el)el.focus();});
+$('newQuote').addEventListener('click',()=>{
+  const keepR={airR:S.airR,seaR:S.seaR,fx:S.fx,apmsMult:S.apmsMult,afrigMult:S.afrigMult,safety:S.safety,shipCur:S.shipCur};
+  S=Object.assign(clone(DEFAULT),keepR,{items:[blank()]});syncSettings();renderItems();update();
+  $('it0_desc').focus();
+});
+
+/* ---------- extras ---------- */
+function renderExtras(){
+  const box=$('extras');box.innerHTML='';
+  const panel=$('extrasPanel');panel.hidden=S.mode==='none';
+  if(S.mode==='air'){
+    const X=S.airX;
+    const nums=[['reception','Deliveries to warehouse'],['hs','Extra HS code lines'],['exa','Extra EXA documents'],['transit','Transit documents'],['un','Additional UN codes'],['dgrAirline','DGR airline checks'],['lithium','Lithium checks'],['dgrCheck','DGR checks (DG company)'],['keepCool','Keep Cool shipments']];
+    nums.forEach(([k,lab])=>box.appendChild(numField('ax_'+k,lab,X[k],v=>{X[k]=v})));
+    box.appendChild(chk('ax_pax','DGR surcharge PAX',X.dgrPax,v=>{X.dgrPax=v}));
+    box.appendChild(chk('ax_cao','DGR surcharge CAO',X.dgrCao,v=>{X.dgrCao=v}));
+  }else if(S.mode==='sea'){
+    const X=S.seaX;
+    box.appendChild(numField('sx_reception','Warehouse receptions',X.reception,v=>{X.reception=v}));
+    box.appendChild(numField('sx_docX','Extra customs documents',X.docX,v=>{X.docX=v}));
+    box.appendChild(chk('sx_dg','Dangerous goods',X.dg,v=>{X.dg=v}));
+    box.appendChild(chk('sx_ins','All-risk insurance',X.insure,v=>{X.insure=v}));
+  }
+}
+function numField(id,lab,val,set){const l=document.createElement('label');l.className='f';l.innerHTML='<span>'+lab+'</span>';
+  const i=document.createElement('input');i.type='number';i.min='0';i.step='1';i.id=id;i.value=val;i.addEventListener('input',()=>{set(n(i.value));update()});l.appendChild(i);return l}
+function chk(id,lab,val,set){const l=document.createElement('label');l.className='check';
+  const i=document.createElement('input');i.type='checkbox';i.id=id;i.checked=!!val;i.addEventListener('change',()=>{set(i.checked);update()});
+  l.appendChild(i);l.appendChild(document.createTextNode(lab));return l}
+
+/* ---------- rates ---------- */
+function renderRates(){
+  const body=$('ratesBody');body.innerHTML='';
+  [['Airfreight · Brussels → Kinshasa',AIR_RATES,'airR'],['Sea groupage · Brussels → Kinshasa',SEA_RATES,'seaR']].forEach(([t,list,key])=>{
+    const d=document.createElement('div');d.innerHTML='<h3>'+t+'</h3>';
+    const g=document.createElement('div');g.className='rate-list';
+    list.forEach(([k,lab])=>{const s=document.createElement('label');s.htmlFor=key+'_'+k;s.textContent=lab;s.style.color='var(--muted)';
+      const i=document.createElement('input');i.type='number';i.step='any';i.id=key+'_'+k;i.value=S[key][k];
+      i.addEventListener('input',()=>{S[key][k]=n(i.value);update()});g.appendChild(s);g.appendChild(i)});
+    d.appendChild(g);body.appendChild(d);
+  });
+}
+$('resetRates').addEventListener('click',()=>{S.airR=def(AIR_RATES);S.seaR=def(SEA_RATES);renderRates();update()});
+
+/* ---------- calculations ---------- */
+function calcAir(kg,cbm){
+  const R=S.airR,X=S.airX,rows=[];if(kg<=0&&cbm<=0)return{rows,total:0,chargeable:0};
+  const chargeable=Math.max(cbm*R.volFactor,kg);
+  const add=(label,detail,eur)=>{if(eur)rows.push({label,detail,eur})};
+  add('Customs document','1st document',R.doc1);
+  add('Extra HS codes',X.hs+' × €'+fmt(R.hs),X.hs*R.hs);
+  add('Extra EXA documents',X.exa+' × €'+fmt(R.exa),X.exa*R.exa);
+  add('Transit documents',X.transit+' × €'+fmt(R.transit),X.transit*R.transit);
+  add('Reception charges',X.reception+' × €'+fmt(R.reception),X.reception*R.reception);
+  add('FERI',fmt(kg,1)+' kg × €'+fmt(R.feri)+' (min €'+fmt(R.feriMin,0)+')',Math.max(R.feriMin,kg*R.feri));
+  const small=kg<=R.smallMax;const rate=small?R.small:R.rate;
+  add('Airfreight',fmt(kg,1)+' kg actual × €'+fmt(rate)+(small?' (small shipment)':''),kg*rate);
+  const over=Math.max(0,chargeable-kg);
+  add('Volume surcharge',fmt(over,1)+' kg over actual × €'+fmt(R.volSur),over*R.volSur);
+  add('Fuel surcharge',fmt(kg,1)+' kg × €'+fmt(R.fuel),kg*R.fuel);
+  add('Energy surcharge',fmt(kg,1)+' kg × €'+fmt(R.energy),kg*R.energy);
+  if(X.dgrPax)add('DGR surcharge PAX',fmt(kg,1)+' kg × €'+fmt(R.dgrPax),kg*R.dgrPax);
+  if(X.dgrCao)add('DGR surcharge CAO',fmt(kg,1)+' kg × €'+fmt(R.dgrCao),kg*R.dgrCao);
+  add('Additional UN codes',X.un+' × €'+fmt(R.un),X.un*R.un);
+  add('DGR airline check',X.dgrAirline+' × €'+fmt(R.dgrAirline),X.dgrAirline*R.dgrAirline);
+  add('Lithium check',X.lithium+' × €'+fmt(R.lithium),X.lithium*R.lithium);
+  add('DGR check by DG company',X.dgrCheck+' × €'+fmt(R.dgrCheck),X.dgrCheck*R.dgrCheck);
+  add('Keep Cool 2–8 °C',X.keepCool+' × €'+fmt(R.keepCool),X.keepCool*R.keepCool);
+  return{rows,total:rows.reduce((a,r)=>a+r.eur,0),chargeable,info:'Chargeable weight '+fmt(chargeable,1)+' kg (max of '+fmt(kg,1)+' kg actual and '+fmt(cbm*R.volFactor,1)+' kg volumetric)'};
+}
+function calcSea(kg,cbm,goodsEur){
+  const R=S.seaR,X=S.seaX,rows=[];if(kg<=0&&cbm<=0)return{rows,total:0};
+  const add=(label,detail,eur)=>{if(eur)rows.push({label,detail,eur})};
+  add('B/L issue','',R.bl);
+  add('Export customs document','1st document',R.doc1);
+  add('Extra customs documents',X.docX+' × €'+fmt(R.docX),X.docX*R.docX);
+  add('Warehouse reception',X.reception+' × €'+fmt(R.reception),X.reception*R.reception);
+  add('Admin / handling','per shipment',R.admin);
+  if(X.dg)add('Dangerous goods control','',R.dgDoc);
+  const tonnes=kg/1000, wmT=kg/R.wm;let freight,detail,basis;
+  if(wmT>cbm){basis='weight';freight=Math.max(R.tonneMin,tonnes*R.tonne);
+    detail=fmt(tonnes,3)+' t × €'+fmt(R.tonne,0)+(tonnes*R.tonne<R.tonneMin?' → minimum €'+fmt(R.tonneMin,0):'');}
+  else{basis='volume';const r=cbm>10?R.m3c:cbm>5?R.m3b:R.m3a;freight=Math.max(R.volMin,cbm*r);
+    detail=fmt(cbm,3)+' m³ × €'+fmt(r,0)+(cbm*r<R.volMin?' → minimum €'+fmt(R.volMin,0):'');}
+  add('Sea freight (by '+basis+')',detail,freight);
+  if(X.dg)add('Dangerous goods surcharge','per shipment',R.dgSur);
+  if(X.insure){const insured=(goodsEur+freight)*R.insCover/100;const prem=insured*R.insPct/100;const tax=prem*R.insTax/100;
+    add('Insurance',fmt(R.insPct)+'% of €'+fmt(insured,0)+' + '+fmt(R.insTax,1)+'% tax + €'+fmt(R.insFee,0)+' fee',prem+tax+R.insFee);}
+  return{rows,total:rows.reduce((a,r)=>a+r.eur,0),info:'W/M '+fmt(R.wm,0)+' kg = 1 m³ · '+fmt(wmT,3)+' t vs '+fmt(cbm,3)+' m³ → charged by '+basis};
+}
+function compute(){
+  const isUSD=S.cur==='USD',isAf=S.source==='afrig';
+  const mult=S.apmsMult*(isUSD?S.fx:1)*(isAf?S.afrigMult:1);
+  let pcs=0,cbm=0,kg=0,cost=0;
+  const lines=S.items.map((it,i)=>{const q=n(it.qty),p=n(it.price);const c=q*n(it.l)*n(it.w)*n(it.h)/1e6;const w=q*n(it.kg);
+    pcs+=q;cbm+=c;kg+=w;cost+=q*p;return{i,desc:it.desc||('Item '+(i+1)),q,p,cbm:c,kg:w,unitQ:p*mult,lineQ:q*p*mult}});
+  const goodsQ=cost*mult;
+  const shipCur=S.shipCur==='USD'?'USD':S.cur;
+  const shipMult=(shipCur==='USD'?S.fx:1)*(1+S.safety/100);
+  const air=calcAir(kg,cbm),sea=calcSea(kg,cbm,cost);
+  const modes={air,sea,none:{rows:[],total:0}};
+  const ship=modes[S.mode];
+  return{isUSD,isAf,mult,pcs,cbm,kg,cost,lines,goodsQ,shipCur,shipMult,air,sea,ship,shipQ:ship.total*shipMult,
+    chargeable:Math.max(cbm*S.airR.volFactor,kg)};
+}
+
+/* ---------- render ---------- */
+function update(){
+  save();
+  const C=compute();
+  C.lines.forEach(l=>{const el=$('cbm'+l.i);if(el)el.textContent=fmt(l.cbm,3)});
+  $('strip').innerHTML='<span>Pieces <b>'+fmt(C.pcs,0)+'</b></span><span>Volume <b>'+fmt(C.cbm,3)+' m³</b></span><span>Weight <b>'+fmt(C.kg,1)+' kg</b></span><span>Air chargeable <b>'+fmt(C.chargeable,1)+' kg</b></span><span>Cost <b>'+money(C.cost,'EUR')+'</b></span>';
+
+  // comparison
+  const totalFor=t=>t*C.shipMult;
+  const same=C.shipCur===S.cur;
+  const cmp=[['air','Air',C.air.total],['sea','Sea',C.sea.total],['none','No shipping',0]].map(([k,lab,t])=>{
+    const v=same?C.goodsQ+totalFor(t):totalFor(t);
+    const shown=k==='none'?money(C.goodsQ,S.cur):(same?money(v,S.cur):'+ '+money(v,C.shipCur));
+    return '<button type="button" data-v="'+k+'" aria-pressed="'+(S.mode===k)+'"><span class="k">'+lab+'</span><span class="v">'+shown+'</span></button>'}).join('');
+  $('compare').innerHTML=cmp;
+
+  // grand total
+  let g='';
+  if(S.mode==='none'||same){
+    g='<div class="grand"><div class="label">Total quote'+(S.mode==='none'?' · goods only':' · goods + '+S.mode+' freight')+'</div><div class="amt">'+money(C.goodsQ+(S.mode==='none'?0:C.shipQ),S.cur)+'</div></div>';
+  }else{
+    g='<div class="grand split"><div><div class="label">Goods</div><div class="amt">'+money(C.goodsQ,S.cur)+'</div></div><div><div class="label">'+(S.mode==='air'?'Air':'Sea')+' freight</div><div class="amt">'+money(C.shipQ,'USD')+'</div></div></div>'+
+      '<div class="note">Goods are in EUR and shipping in USD, so there is no single total. All in USD it would be '+money(C.goodsQ*S.fx+C.shipQ,'USD')+'.</div>';
+  }
+  $('grand').innerHTML=g;
+
+  // goods breakdown
+  let gb='<h4><span>Goods</span><span>'+money(C.goodsQ,S.cur)+'</span></h4><table class="bd">';
+  gb+='<tr class="step"><td>Purchase price from APMS</td><td class="n">'+money(C.cost,'EUR')+'</td></tr>';
+  let run=C.cost*S.apmsMult;gb+='<tr class="step"><td>× '+fmt(S.apmsMult)+' APMS margin</td><td class="n">'+money(run,'EUR')+'</td></tr>';
+  if(C.isUSD){run*=S.fx;gb+='<tr class="step"><td>× '+fmt(S.fx)+' EUR → USD</td><td class="n">'+money(run,'USD')+'</td></tr>';}
+  if(C.isAf){run*=S.afrigMult;gb+='<tr class="step"><td>× '+fmt(S.afrigMult)+' Afrigeration margin</td><td class="n">'+money(run,S.cur)+'</td></tr>';}
+  gb+='<tr class="sum"><td>Goods price quoted (× '+fmt(C.mult,4)+')</td><td class="n">'+money(C.goodsQ,S.cur)+'</td></tr></table>';
+  gb+='<table class="bd" style="margin-top:8px">'+C.lines.filter(l=>l.q||l.p).map(l=>'<tr><td>'+esc(l.desc)+'<span class="d">'+fmt(l.q,0)+' × '+money(l.unitQ,S.cur)+'</span></td><td class="n">'+money(l.lineQ,S.cur)+'</td></tr>').join('')+'</table>';
+  $('goodsSec').innerHTML=gb;
+
+  // shipping breakdown
+  let sb='';
+  if(S.mode!=='none'){
+    const sh=C.ship;
+    sb='<h4><span>'+(S.mode==='air'?'Airfreight':'Sea groupage')+' · Herfurth</span><span>'+money(C.shipQ,C.shipCur)+'</span></h4>';
+    if(!sh.rows.length){sb+='<p class="hint">Enter dimensions and weight to calculate freight.</p>';}
+    else{
+      sb+='<p class="hint" style="margin:0 0 6px">'+sh.info+'</p><table class="bd">'+sh.rows.map(r=>'<tr><td>'+r.label+(r.detail?'<span class="d">'+r.detail+'</span>':'')+'</td><td class="n">'+money(r.eur,'EUR')+'</td></tr>').join('');
+      sb+='<tr class="sum"><td>Shipping cost</td><td class="n">'+money(sh.total,'EUR')+'</td></tr>';
+      let r2=sh.total;
+      if(C.shipCur==='USD'){r2*=S.fx;sb+='<tr class="step"><td>× '+fmt(S.fx)+' EUR → USD</td><td class="n">'+money(r2,'USD')+'</td></tr>';}
+      r2*=1+S.safety/100;sb+='<tr class="step"><td>+ '+fmt(S.safety,1)+'% safety margin</td><td class="n">'+money(r2,C.shipCur)+'</td></tr>';
+      sb+='<tr class="key"><td>Shipping quoted</td><td class="n">'+money(C.shipQ,C.shipCur)+'</td></tr></table>';
+    }
+  }
+  $('shipSec').innerHTML=sb;
+  window.__C=C;
+}
+$('compare').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;S.mode=b.dataset.v;syncSettings();update()});
+
+/* ---------- copy ---------- */
+function summaryText(){
+  const C=compute();const L=[];
+  L.push('QUOTE'+(S.ref?' – '+S.ref:'')+'  ('+(S.source==='afrig'?'Afrigeration':'APMS direct')+')');
+  L.push('');
+  C.lines.filter(l=>l.q||l.p).forEach(l=>L.push(l.desc+': '+fmt(l.q,0)+' × '+money(l.unitQ,S.cur)+' = '+money(l.lineQ,S.cur)));
+  L.push('Goods total: '+money(C.goodsQ,S.cur));
+  if(S.mode!=='none'){
+    L.push((S.mode==='air'?'Airfreight':'Sea freight')+' Brussels → Kinshasa (customs import & delivery incl.): '+money(C.shipQ,C.shipCur));
+    L.push('  '+fmt(C.pcs,0)+' pcs · '+fmt(C.cbm,3)+' m³ · '+fmt(C.kg,1)+' kg'+(S.mode==='air'?' · chargeable '+fmt(C.chargeable,1)+' kg':''));
+  }
+  L.push('');
+  if(S.mode==='none'||C.shipCur===S.cur)L.push('TOTAL: '+money(C.goodsQ+(S.mode==='none'?0:C.shipQ),S.cur));
+  else L.push('TOTAL: '+money(C.goodsQ,S.cur)+' + '+money(C.shipQ,'USD')+' shipping');
+  return L.join('\n');
+}
+$('copyBtn').addEventListener('click',()=>{
+  const t=summaryText();const ta=$('copyText');ta.value=t;
+  const done=m=>{$('toast').textContent=m;setTimeout(()=>{$('toast').textContent=''},2500)};
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(()=>{ta.hidden=true;done('Copied')}).catch(()=>{ta.hidden=false;ta.focus();ta.select();done('Select all and copy')});
+  }else{ta.hidden=false;ta.focus();ta.select();done('Select all and copy')}
+});
+
+syncSettings();renderItems();renderRates();update();
+})();
+</script>
+
+</body>
+</html>
